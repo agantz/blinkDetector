@@ -57,6 +57,13 @@ public class BlinkDetector {
             return 0;
         }
 
+        // Get the total frame count of the video
+        double frameCount = capture.get(Videoio.CAP_PROP_FRAME_COUNT);
+        if (frameCount == 0) {
+            logger.error("Error: Could not retrieve frame count.");
+            return 0;
+        }
+
         // Get the frame rate of the video
         double frameRate = capture.get(Videoio.CAP_PROP_FPS);
         if (frameRate == 0) {
@@ -64,22 +71,29 @@ public class BlinkDetector {
             return 0;
         }
 
+        // Calculate the duration of the video in seconds
+        double videoDuration = frameCount / frameRate;
+        logger.info("Video duration: {} seconds", videoDuration);
+
+
+
         Mat frame = new Mat();
-        int frameCount = 0;
+        int myFrameCount = 0;
         int blinkCount = 0;
         EyeBlinkDetector eyeBlinkDetector = new EyeBlinkDetector();
 
         // Read frames from the video file in a loop
         while (capture.read(frame)) {
-            frameCount++;
+            myFrameCount++;
             // Detect blinks in the current frame
             if (eyeBlinkDetector.detectBlink(frame)) {
                 blinkCount++;
             }
         }
 
+        logger.info("Video duration: {} seconds", videoDuration);
         logger.info("Frame rate: {}", frameRate);
-        logger.info("Total frames processed: {}", frameCount);
+        logger.info("Total frames processed: {}", myFrameCount);
         logger.info("Total blinks detected: {}", blinkCount);
 
         // Release the video capture
