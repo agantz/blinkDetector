@@ -24,7 +24,8 @@ public class BlinkDetector {
 
         String videoPath = args[0];
         int blinkCount = countBlinks(videoPath);
-        logger.info("Number of blinks detected: " + blinkCount);
+        logger.info("file: {}  was examined", videoPath);
+        logger.info("Number of blinks detected: {}", blinkCount);
     }
 
     private static int countBlinks(String videoPath) {
