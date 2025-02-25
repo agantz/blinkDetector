@@ -14,6 +14,11 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
+/**
+ * The EyeBlinkDetector class is responsible for detecting eye blinks in video frames.
+ * It uses OpenCV's CascadeClassifier to detect faces and eyes, and determines blinks
+ * based on the absence of detected eyes for a certain number of consecutive frames.
+ */
 public class EyeBlinkDetector {
     private static final Logger logger = LogManager.getLogger(EyeBlinkDetector.class);
 
@@ -21,15 +26,15 @@ public class EyeBlinkDetector {
     private final CascadeClassifier eyeCascade;
     private double eyeAspectRatioThreshold = 0.3; // Threshold for determining blink
     private int consecutiveFrames = 3;            // Number of consecutive frames for a blink
-    private int counter = 0;                      // Counter for consecutive frames
+
     private boolean blinking = false;             // Current blink state
     private int framesWithoutEyes = 0;            // Counter for frames where no eyes are detected
-    private int minFramesForBlink = 2;            // Minimum frames without eyes to count as a blink
-    private int maxFramesForBlink = 7;            // Maximum frames without eyes to still count as a blink
 
+    /**
+     * Constructor for EyeBlinkDetector.
+     * Initializes the face and eye cascade classifiers by loading the necessary XML files.
+     */
     public EyeBlinkDetector() {
-
-
         // Initialize the classifiers
         faceCascade = new CascadeClassifier();
         eyeCascade = new CascadeClassifier();
@@ -57,7 +62,11 @@ public class EyeBlinkDetector {
     }
 
     /**
-     * Extracts a resource file to a temporary location for loading by OpenCV
+     * Extracts a resource file to a temporary location for loading by OpenCV.
+     *
+     * @param resourceName The name of the resource file to extract.
+     * @return A File object pointing to the extracted resource file.
+     * @throws IOException If an error occurs during file extraction.
      */
     private File extractResource(String resourceName) throws IOException {
         // First, check if file exists in current directory
@@ -94,6 +103,12 @@ public class EyeBlinkDetector {
         return tempFile;
     }
 
+    /**
+     * Detects blinks in the given video frame.
+     *
+     * @param frame The video frame to process.
+     * @return True if a blink is detected, false otherwise.
+     */
     public boolean detectBlink(Mat frame) {
         // Reset blink state at the beginning of each call
         boolean blinkDetected = false;
@@ -166,6 +181,10 @@ public class EyeBlinkDetector {
                 framesWithoutEyes++;
 
                 // Check if this could be a blink
+                // Minimum frames without eyes to count as a blink
+                int minFramesForBlink = 2;
+                // Maximum frames without eyes to still count as a blink
+                int maxFramesForBlink = 7;
                 if (framesWithoutEyes >= minFramesForBlink && framesWithoutEyes <= maxFramesForBlink) {
                     if (!blinking) {
                         blinking = true;
@@ -193,39 +212,47 @@ public class EyeBlinkDetector {
         return blinkDetected;
     }
 
-    // Reset the detector state
+    /**
+     * Resets the detector state.
+     */
     public void reset() {
-        counter = 0;
         blinking = false;
         framesWithoutEyes = 0;
     }
 
+    /**
+     * Gets the eye aspect ratio threshold.
+     *
+     * @return The eye aspect ratio threshold.
+     */
     public double getEyeAspectRatioThreshold() {
         return eyeAspectRatioThreshold;
     }
 
+    /**
+     * Sets the eye aspect ratio threshold.
+     *
+     * @param eyeAspectRatioThreshold The new eye aspect ratio threshold.
+     */
     public void setEyeAspectRatioThreshold(double eyeAspectRatioThreshold) {
         this.eyeAspectRatioThreshold = eyeAspectRatioThreshold;
     }
 
+    /**
+     * Gets the number of consecutive frames required for a blink.
+     *
+     * @return The number of consecutive frames.
+     */
     public int getConsecutiveFrames() {
         return consecutiveFrames;
     }
 
+    /**
+     * Sets the number of consecutive frames required for a blink.
+     *
+     * @param consecutiveFrames The new number of consecutive frames.
+     */
     public void setConsecutiveFrames(int consecutiveFrames) {
         this.consecutiveFrames = consecutiveFrames;
     }
 }
-
-
-
-//
-// public class EyeBlinkDetector {
-//    public boolean detectBlink(Mat frame) {
-//        // Placeholder for blink detection logic
-//        // In a real implementation, this method would process the frame
-//        // using an eye detection model and determine if a blink occurred.
-//        return false;
-//    }
-//}
-
