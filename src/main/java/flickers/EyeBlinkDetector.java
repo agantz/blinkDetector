@@ -1,40 +1,105 @@
 package flickers;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfRect;
 import org.opencv.core.Rect;
 import org.opencv.core.Size;
-import org.opencv.core.Point;
-import org.opencv.core.Scalar;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.objdetect.CascadeClassifier;
-import org.opencv.core.MatOfKeyPoint;
-import org.opencv.features2d.Features2d;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 
 public class EyeBlinkDetector {
-    private CascadeClassifier faceCascade;
-    private CascadeClassifier eyeCascade;
+    private static final Logger logger = LogManager.getLogger(EyeBlinkDetector.class);
+
+    private final CascadeClassifier faceCascade;
+    private final CascadeClassifier eyeCascade;
     private double eyeAspectRatioThreshold = 0.3; // Threshold for determining blink
     private int consecutiveFrames = 3;            // Number of consecutive frames for a blink
     private int counter = 0;                      // Counter for consecutive frames
     private boolean blinking = false;             // Current blink state
+    private int framesWithoutEyes = 0;            // Counter for frames where no eyes are detected
+    private int minFramesForBlink = 2;            // Minimum frames without eyes to count as a blink
+    private int maxFramesForBlink = 7;            // Maximum frames without eyes to still count as a blink
 
     public EyeBlinkDetector() {
+
+
         // Initialize the classifiers
         faceCascade = new CascadeClassifier();
         eyeCascade = new CascadeClassifier();
 
-        // Load the Haar cascade XML files (assumes these files are in your resources)
-        faceCascade.load("haarcascade_frontalface_default.xml");
-        eyeCascade.load("haarcascade_eye.xml");
+        try {
+            // Load the cascade classifier files from resources
+            File faceCascadeFile = extractResource("haarcascade_frontalface_default.xml");
+            File eyeCascadeFile = extractResource("haarcascade_eye.xml");
 
-        if (faceCascade.empty() || eyeCascade.empty()) {
-            System.err.println("Error loading cascade classifiers");
+            // Load the cascade classifiers
+            if (faceCascadeFile != null && eyeCascadeFile != null) {
+                boolean faceLoaded = faceCascade.load(faceCascadeFile.getAbsolutePath());
+                boolean eyeLoaded = eyeCascade.load(eyeCascadeFile.getAbsolutePath());
+
+                if (!faceLoaded || !eyeLoaded) {
+                    logger.error("Error loading cascade classifiers: Face loaded: {}, Eye loaded: {}", faceLoaded, eyeLoaded);
+                }
+            } else {
+                logger.error("Could not extract cascade files from resources");
+            }
+        } catch (IOException e) {
+            logger.error("Error loading cascade classifiers: {}", e.getMessage());
+            e.printStackTrace();
         }
     }
 
+    /**
+     * Extracts a resource file to a temporary location for loading by OpenCV
+     */
+    private File extractResource(String resourceName) throws IOException {
+        // First, check if file exists in current directory
+        File localFile = new File(resourceName);
+        if (localFile.exists()) {
+            return localFile;
+        }
+
+        // If not found, try to extract from resources
+        InputStream is = getClass().getResourceAsStream("/" + resourceName);
+        if (is == null) {
+            is = getClass().getResourceAsStream(resourceName);
+        }
+
+        if (is == null) {
+            logger.error("Could not find resource: {}", resourceName);
+            return null;
+        }
+
+        // Create a temporary file
+        File tempFile = File.createTempFile("cascade_", ".xml");
+        tempFile.deleteOnExit();
+
+        // Copy the resource to the temporary file
+        try (FileOutputStream os = new FileOutputStream(tempFile)) {
+            byte[] buffer = new byte[1024];
+            int bytesRead;
+            while ((bytesRead = is.read(buffer)) != -1) {
+                os.write(buffer, 0, bytesRead);
+            }
+        }
+
+        is.close();
+        return tempFile;
+    }
+
     public boolean detectBlink(Mat frame) {
-        if (frame.empty()) {
+        // Reset blink state at the beginning of each call
+        boolean blinkDetected = false;
+
+        if (frame.empty() || faceCascade.empty() || eyeCascade.empty()) {
+            logger.error("Frame is empty or classifiers not loaded properly");
             return false;
         }
 
@@ -45,9 +110,25 @@ public class EyeBlinkDetector {
 
         // Detect faces
         MatOfRect faces = new MatOfRect();
-        faceCascade.detectMultiScale(grayFrame, faces, 1.1, 3, 0, new Size(30, 30), new Size());
+        try {
+            faceCascade.detectMultiScale(
+                    grayFrame,
+                    faces,
+                    1.1,
+                    3,
+                    0,
+                    new Size(30, 30),
+                    new Size()
+            );
+        } catch (Exception e) {
+            logger.error("Error in face detection: {}", e.getMessage());
+            grayFrame.release();
+            return false;
+        }
 
         Rect[] facesArray = faces.toArray();
+        boolean eyesDetected = false;
+
         if (facesArray.length > 0) {
             // We'll focus on the first face detected
             Rect faceRect = facesArray[0];
@@ -57,78 +138,84 @@ public class EyeBlinkDetector {
 
             // Detect eyes within the face region
             MatOfRect eyes = new MatOfRect();
-            eyeCascade.detectMultiScale(faceROI, eyes, 1.1, 2, 0, new Size(20, 20), new Size());
+            try {
+                eyeCascade.detectMultiScale(
+                        faceROI,
+                        eyes,
+                        1.1,
+                        2,
+                        0,
+                        new Size(20, 20),
+                        new Size()
+                );
+            } catch (Exception e) {
+                logger.error("Error in eye detection: {}", e.getMessage());
+                faceROI.release();
+                grayFrame.release();
+                return false;
+            }
 
             Rect[] eyesArray = eyes.toArray();
 
-            // If we can't detect eyes, that might be a blink
-            if (eyesArray.length == 0) {
-                counter++;
-                if (counter >= consecutiveFrames) {
-                    blinking = true;
-                }
+            // If we can detect eyes, reset the frames without eyes counter
+            if (eyesArray.length > 0) {
+                framesWithoutEyes = 0;
+                eyesDetected = true;
             } else {
-                // Process detected eyes to check for blink using EAR (Eye Aspect Ratio)
-                double earValue = calculateEAR(eyesArray, faceROI);
+                // Increment counter for frames without eyes
+                framesWithoutEyes++;
 
-                if (earValue < eyeAspectRatioThreshold) {
-                    counter++;
-                    if (counter >= consecutiveFrames) {
+                // Check if this could be a blink
+                if (framesWithoutEyes >= minFramesForBlink && framesWithoutEyes <= maxFramesForBlink) {
+                    if (!blinking) {
                         blinking = true;
+                        blinkDetected = true;
                     }
-                } else {
-                    counter = 0;
+                } else if (framesWithoutEyes > maxFramesForBlink) {
+                    // Too many frames without eyes - probably not a blink but eyes closed or looking away
                     blinking = false;
                 }
             }
+
+            // If eyes are detected after a blink, reset the blink state
+            if (eyesDetected && blinking) {
+                blinking = false;
+            }
+
+            faceROI.release();
         } else {
-            // Reset if no face detected
-            counter = 0;
+            // No face detected, reset counters
+            framesWithoutEyes = 0;
             blinking = false;
         }
 
         grayFrame.release();
-        return blinking;
+        return blinkDetected;
     }
 
-    private double calculateEAR(Rect[] eyes, Mat faceROI) {
-        // If we have at least one eye detected
-        if (eyes.length > 0) {
-            double sumEAR = 0.0;
-            int count = 0;
-
-            for (Rect eye : eyes) {
-                // Extract eye region
-                Mat eyeROI = faceROI.submat(eye);
-
-                // Calculate eye height and width
-                double eyeHeight = eye.height;
-                double eyeWidth = eye.width;
-
-                // Simple EAR approximation based on height/width ratio
-                // A more accurate implementation would use eye landmarks
-                double ear = eyeHeight / eyeWidth;
-
-                sumEAR += ear;
-                count++;
-
-                eyeROI.release();
-            }
-
-            // Return average EAR for all detected eyes
-            return count > 0 ? sumEAR / count : 1.0;
-        }
-
-        return 1.0; // Return high value if no eyes detected
-    }
-
-    // Additional method to reset the detector state if needed
+    // Reset the detector state
     public void reset() {
         counter = 0;
         blinking = false;
+        framesWithoutEyes = 0;
+    }
+
+    public double getEyeAspectRatioThreshold() {
+        return eyeAspectRatioThreshold;
+    }
+
+    public void setEyeAspectRatioThreshold(double eyeAspectRatioThreshold) {
+        this.eyeAspectRatioThreshold = eyeAspectRatioThreshold;
+    }
+
+    public int getConsecutiveFrames() {
+        return consecutiveFrames;
+    }
+
+    public void setConsecutiveFrames(int consecutiveFrames) {
+        this.consecutiveFrames = consecutiveFrames;
     }
 }
-
 
 
 
