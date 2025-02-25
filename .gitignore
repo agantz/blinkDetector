@@ -1,2 +1,2 @@
-target/classes/flickers/BlinkDetector.class
-target/classes/flickers/EyeBlinkDetector.class
+target/*
+
