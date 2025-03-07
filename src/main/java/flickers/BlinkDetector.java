@@ -73,7 +73,8 @@ public class BlinkDetector {
 
         // Calculate the duration of the video in seconds
         double videoDuration = frameCount / frameRate;
-        logger.info("Video duration: {} seconds", videoDuration);
+        logger.info("Video duration: {} seconds (min: {} sec: {})",
+                videoDuration, videoDuration/60, videoDuration%60);
 
 
 
@@ -88,6 +89,8 @@ public class BlinkDetector {
             // Detect blinks in the current frame
             if (eyeBlinkDetector.detectBlink(frame)) {
                 blinkCount++;
+                logger.info("Blink detected at frame: {} min: {} sec: {}",
+                        myFrameCount, myFrameCount/25/60, myFrameCount/25%60);
             }
         }
 
